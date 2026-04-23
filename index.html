@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Swampy vs. Elite Four — FungBucks Prediction Market</title>
+<meta name="description" content="Will Swampy take down the Elite Four by the end of the week? Place your bets in FungBucks." />
+
+<!-- Open Graph / Discord preview -->
+<meta property="og:title" content="Will Swampy take down the Elite Four by end of week?" />
+<meta property="og:description" content="Live prediction market — place your bets in FungBucks (Ƒ)." />
+<meta property="og:type" content="website" />
+<meta name="theme-color" content="#1D9E75" />
+
+<style>
+  :root {
+    --bg: #0f1115;
+    --surface: #1a1d23;
+    --surface-2: #242830;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.18);
+    --text: #f0f2f5;
+    --text-secondary: #a0a6ad;
+    --text-tertiary: #6b7178;
+    --yes: #1D9E75;
+    --yes-bg: rgba(29, 158, 117, 0.15);
+    --yes-text: #5DCAA5;
+    --no: #D4537E;
+    --no-bg: rgba(212, 83, 126, 0.15);
+    --no-text: #ED93B1;
+    --accent: #378ADD;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    min-height: 100vh;
+    padding: 24px 16px;
+  }
+
+  .container {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 500;
+    margin: 0 0 4px;
+    line-height: 1.3;
+  }
+
+  .header-card {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    border: 0.5px solid var(--border);
+    padding: 20px 24px;
+    margin-bottom: 16px;
+  }
+
+  .badge-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+
+  .badge {
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: var(--radius-md);
+    font-weight: 500;
+    background: rgba(55, 138, 221, 0.15);
+    color: #85B7EB;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #1D9E75;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .close-time {
+    font-size: 12px;
+    color: var(--text-tertiary);
+  }
+
+  .subtitle {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  .subtitle strong {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .stat-card {
+    background: var(--surface-2);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+  }
+
+  .stat-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0 0 4px;
+  }
+
+  .stat-value {
+    font-size: 22px;
+    font-weight: 500;
+    margin: 0;
+  }
+
+  .prob-bar {
+    height: 10px;
+    background: var(--surface-2);
+    border-radius: 999px;
+    overflow: hidden;
+    display: flex;
+    margin-bottom: 6px;
+  }
+
+  .prob-bar > div {
+    transition: width 0.3s ease;
+  }
+
+  .prob-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+  }
+
+  .prob-labels strong {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .side-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .side-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px 20px;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.1s;
+    user-select: none;
+  }
+
+  .side-card:hover {
+    border-color: var(--border-strong);
+  }
+
+  .side-card:active {
+    transform: scale(0.99);
+  }
+
+  .side-card.active-yes {
+    border-color: var(--yes);
+  }
+
+  .side-card.active-no {
+    border-color: var(--no);
+  }
+
+  .side-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
+  }
+
+  .side-name {
+    font-size: 16px;
+    font-weight: 500;
+  }
+
+  .side-tag {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 2px 10px;
+    border-radius: 999px;
+  }
+
+  .tag-yes { background: var(--yes-bg); color: var(--yes-text); }
+  .tag-no { background: var(--no-bg); color: var(--no-text); }
+
+  .side-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0 0 10px;
+  }
+
+  .side-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    margin-top: 3px;
+  }
+
+  .side-row .muted { color: var(--text-secondary); }
+  .side-row .val { font-weight: 500; }
+
+  .bet-panel {
+    background: var(--surface-2);
+    border-radius: var(--radius-lg);
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
+
+  .bet-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .bet-head-title {
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .bet-head-side {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .bet-head-side strong {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .stake-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .stake-row label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    min-width: 50px;
+  }
+
+  input[type="range"] {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: var(--border-strong);
+    border-radius: 999px;
+    outline: none;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    background: var(--text);
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    background: var(--text);
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+  }
+
+  .stake-value {
+    font-size: 14px;
+    font-weight: 500;
+    min-width: 70px;
+    text-align: right;
+  }
+
+  .quick-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+
+  .quick-btn, .place-btn, .reset-btn {
+    font-family: inherit;
+    border: 0.5px solid var(--border-strong);
+    background: transparent;
+    color: var(--text);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s, transform 0.1s;
+  }
+
+  .quick-btn {
+    flex: 1;
+    font-size: 12px;
+    padding: 8px 4px;
+  }
+
+  .quick-btn:hover { background: var(--surface); }
+  .quick-btn:active { transform: scale(0.98); }
+
+  .place-btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    background: var(--text);
+    color: var(--bg);
+    border: none;
+  }
+
+  .place-btn:hover:not(:disabled) { opacity: 0.9; }
+  .place-btn:active:not(:disabled) { transform: scale(0.99); }
+
+  .place-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .bets-panel {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
+
+  .bets-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .bets-title {
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .bets-count {
+    font-size: 12px;
+    color: var(--text-tertiary);
+  }
+
+  .bet-empty {
+    font-size: 13px;
+    color: var(--text-tertiary);
+    text-align: center;
+    padding: 16px 0;
+  }
+
+  .bet-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-top: 0.5px solid var(--border);
+  }
+
+  .bet-item:first-child { border-top: none; }
+
+  .bet-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .bet-right {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .settle-panel {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
+
+  .settle-head {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 4px;
+  }
+
+  .settle-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0 0 12px;
+  }
+
+  .settle-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .settle-btn {
+    flex: 1;
+    padding: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    border: 0.5px solid var(--border-strong);
+    background: transparent;
+    color: var(--text);
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+
+  .settle-btn.yes:hover { background: var(--yes-bg); border-color: var(--yes); }
+  .settle-btn.no:hover { background: var(--no-bg); border-color: var(--no); }
+  .settle-btn.reset:hover { background: var(--surface-2); }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--surface-2);
+    color: var(--text);
+    padding: 10px 18px;
+    border-radius: var(--radius-md);
+    border: 0.5px solid var(--border-strong);
+    font-size: 13px;
+    opacity: 0;
+    transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .footer {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 20px;
+  }
+
+  .footer a {
+    color: var(--text-secondary);
+    text-decoration: none;
+  }
+
+  .footer a:hover { color: var(--text); }
+
+  @media (max-width: 520px) {
+    body { padding: 16px 12px; }
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+    .stat-card:first-child { grid-column: 1 / -1; }
+    .header-card { padding: 16px 18px; }
+    .side-card { padding: 14px 16px; }
+    .bet-panel, .bets-panel, .settle-panel { padding: 14px 18px; }
+    h1 { font-size: 19px; }
+    .stat-value { font-size: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <div class="header-card">
+    <div class="badge-row">
+      <span class="badge"><span class="live-dot"></span>Live market</span>
+      <span class="close-time">Closes end of week</span>
+    </div>
+    <h1>Will Swampy take down the Elite Four by the end of the week?</h1>
+    <p class="subtitle">Winners paid in <strong>FungBucks</strong> (Ƒ) based on odds at time of bet.</p>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <p class="stat-label">Your balance</p>
+      <p class="stat-value">Ƒ<span id="balance">1,000</span></p>
+    </div>
+    <div class="stat-card">
+      <p class="stat-label">Total pool</p>
+      <p class="stat-value">Ƒ<span id="pool">12,450</span></p>
+    </div>
+    <div class="stat-card">
+      <p class="stat-label">Potential payout</p>
+      <p class="stat-value">Ƒ<span id="payout">0</span></p>
+    </div>
+  </div>
+
+  <div class="prob-bar">
+    <div id="bar-yes" style="width: 62%; background: var(--yes);"></div>
+    <div id="bar-no" style="width: 38%; background: var(--no);"></div>
+  </div>
+  <div class="prob-labels">
+    <span>Yes <strong id="pct-yes">62%</strong></span>
+    <span>No <strong id="pct-no">38%</strong></span>
+  </div>
+
+  <div class="side-grid">
+    <div id="card-yes" class="side-card active-yes">
+      <div class="side-head">
+        <span class="side-name">Yes</span>
+        <span class="side-tag tag-yes">Favorite</span>
+      </div>
+      <p class="side-desc">Swampy sweeps the Elite Four</p>
+      <div class="side-row"><span class="muted">Odds</span><span class="val" id="odds-yes">1.61×</span></div>
+      <div class="side-row"><span class="muted">Pool</span><span class="val" id="vol-yes">Ƒ7,719</span></div>
+    </div>
+    <div id="card-no" class="side-card">
+      <div class="side-head">
+        <span class="side-name">No</span>
+        <span class="side-tag tag-no">Underdog</span>
+      </div>
+      <p class="side-desc">The Elite Four hold the line</p>
+      <div class="side-row"><span class="muted">Odds</span><span class="val" id="odds-no">2.63×</span></div>
+      <div class="side-row"><span class="muted">Pool</span><span class="val" id="vol-no">Ƒ4,731</span></div>
+    </div>
+  </div>
+
+  <div class="bet-panel">
+    <div class="bet-head">
+      <span class="bet-head-title">Place your bet</span>
+      <span class="bet-head-side">Side: <strong id="side-label">Yes</strong></span>
+    </div>
+
+    <div class="stake-row">
+      <label>Stake</label>
+      <input type="range" min="10" max="1000" step="10" value="100" id="stake" />
+      <span class="stake-value">Ƒ<span id="stake-out">100</span></span>
+    </div>
+
+    <div class="quick-row">
+      <button class="quick-btn" data-quick="50">Ƒ50</button>
+      <button class="quick-btn" data-quick="100">Ƒ100</button>
+      <button class="quick-btn" data-quick="250">Ƒ250</button>
+      <button class="quick-btn" data-quick="500">Ƒ500</button>
+      <button class="quick-btn" data-quick="max">Max</button>
+    </div>
+
+    <button id="place-bet" class="place-btn">
+      Bet Ƒ<span id="btn-stake">100</span> on <span id="btn-side">Yes</span> → win Ƒ<span id="btn-win">161</span>
+    </button>
+  </div>
+
+  <div class="bets-panel">
+    <div class="bets-head">
+      <span class="bets-title">Your bets</span>
+      <span class="bets-count"><span id="bet-count">0</span> active</span>
+    </div>
+    <div id="bet-log">
+      <div class="bet-empty">No bets placed yet.</div>
+    </div>
+  </div>
+
+  <div class="settle-panel">
+    <div class="settle-head">Settle the market</div>
+    <p class="settle-desc">Once the outcome is known, resolve the market to pay out winning bets.</p>
+    <div class="settle-row">
+      <button class="settle-btn yes" data-settle="yes">Settle as Yes</button>
+      <button class="settle-btn no" data-settle="no">Settle as No</button>
+      <button class="settle-btn reset" data-settle="reset">Reset</button>
+    </div>
+  </div>
+
+  <div class="footer">
+    Built by <a href="https://github.com/flyscotter" target="_blank" rel="noopener">@flyscotter</a> · FungBucks are not real money
+  </div>
+
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'swampy-market-v1';
+  var INITIAL_POOL_YES = 7719;
+  var INITIAL_POOL_NO = 4731;
+  var INITIAL_BALANCE = 1000;
+  var HOUSE_EDGE = 0.95;
+
+  var state = loadState();
+
+  function defaultState() {
+    return {
+      balance: INITIAL_BALANCE,
+      poolYes: INITIAL_POOL_YES,
+      poolNo: INITIAL_POOL_NO,
+      side: 'yes',
+      stake: 100,
+      bets: [],
+      settled: null
+    };
+  }
+
+  function loadState() {
+    try {
+      var saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        var parsed = JSON.parse(saved);
+        return Object.assign(defaultState(), parsed);
+      }
+    } catch (e) {}
+    return defaultState();
+  }
+
+  function saveState() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  function fmt(n) { return Math.round(n).toLocaleString(); }
+  function calcOdds(own, other) { return ((own + other) / own) * HOUSE_EDGE; }
+
+  function toast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(function() { t.classList.remove('show'); }, 2500);
+  }
+
+  function render() {
+    var total = state.poolYes + state.poolNo;
+    var oddsYes = calcOdds(state.poolYes, state.poolNo);
+    var oddsNo = calcOdds(state.poolNo, state.poolYes);
+    var pctYes = Math.round((state.poolYes / total) * 100);
+    var pctNo = 100 - pctYes;
+
+    document.getElementById('balance').textContent = fmt(state.balance);
+    document.getElementById('pool').textContent = fmt(total);
+    document.getElementById('odds-yes').textContent = oddsYes.toFixed(2) + '×';
+    document.getElementById('odds-no').textContent = oddsNo.toFixed(2) + '×';
+    document.getElementById('vol-yes').textContent = 'Ƒ' + fmt(state.poolYes);
+    document.getElementById('vol-no').textContent = 'Ƒ' + fmt(state.poolNo);
+    document.getElementById('pct-yes').textContent = pctYes + '%';
+    document.getElementById('pct-no').textContent = pctNo + '%';
+    document.getElementById('bar-yes').style.width = pctYes + '%';
+    document.getElementById('bar-no').style.width = pctNo + '%';
+
+    var sideCap = state.side.charAt(0).toUpperCase() + state.side.slice(1);
+    document.getElementById('side-label').textContent = sideCap;
+    document.getElementById('btn-side').textContent = sideCap;
+    document.getElementById('stake-out').textContent = fmt(state.stake);
+    document.getElementById('btn-stake').textContent = fmt(state.stake);
+
+    var activeOdds = state.side === 'yes' ? oddsYes : oddsNo;
+    document.getElementById('btn-win').textContent = fmt(state.stake * activeOdds);
+    document.getElementById('payout').textContent = fmt(state.stake * activeOdds);
+
+    var yesCard = document.getElementById('card-yes');
+    var noCard = document.getElementById('card-no');
+    yesCard.classList.toggle('active-yes', state.side === 'yes');
+    noCard.classList.toggle('active-no', state.side === 'no');
+
+    var placeBtn = document.getElementById('place-bet');
+    placeBtn.disabled = state.stake > state.balance || state.balance <= 0 || state.settled !== null;
+    if (state.settled !== null) {
+      placeBtn.textContent = 'Market settled';
+    } else if (state.balance <= 0) {
+      placeBtn.textContent = 'Out of FungBucks';
+    } else {
+      placeBtn.innerHTML = 'Bet Ƒ<span id="btn-stake">' + fmt(state.stake) + '</span> on <span id="btn-side">' + sideCap + '</span> → win Ƒ<span id="btn-win">' + fmt(state.stake * activeOdds) + '</span>';
+    }
+
+    document.getElementById('bet-count').textContent = state.bets.length;
+    var log = document.getElementById('bet-log');
+    if (state.bets.length === 0) {
+      log.innerHTML = '<div class="bet-empty">No bets placed yet.</div>';
+    } else {
+      log.innerHTML = state.bets.map(function(b) {
+        var tagClass = b.side === 'yes' ? 'tag-yes' : 'tag-no';
+        var statusText = 'Win Ƒ' + fmt(b.stake * b.odds);
+        if (b.resolved === 'won') statusText = '✓ Won Ƒ' + fmt(b.stake * b.odds);
+        else if (b.resolved === 'lost') statusText = '✗ Lost Ƒ' + fmt(b.stake);
+        return '<div class="bet-item">' +
+          '<div class="bet-left">' +
+            '<span class="side-tag ' + tagClass + '">' + b.side.toUpperCase() + '</span>' +
+            '<span style="font-size: 13px;">Ƒ' + fmt(b.stake) + ' @ ' + b.odds.toFixed(2) + '×</span>' +
+          '</div>' +
+          '<span class="bet-right">' + statusText + '</span>' +
+        '</div>';
+      }).join('');
+    }
+
+    var slider = document.getElementById('stake');
+    var cap = Math.max(10, state.balance);
+    slider.max = cap;
+    if (state.stake > cap) {
+      state.stake = cap;
+      slider.value = cap;
+    }
+
+    saveState();
+  }
+
+  document.getElementById('card-yes').addEventListener('click', function() {
+    if (state.settled !== null) return;
+    state.side = 'yes';
+    render();
+  });
+
+  document.getElementById('card-no').addEventListener('click', function() {
+    if (state.settled !== null) return;
+    state.side = 'no';
+    render();
+  });
+
+  document.getElementById('stake').addEventListener('input', function(e) {
+    state.stake = parseInt(e.target.value, 10);
+    render();
+  });
+
+  document.querySelectorAll('[data-quick]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var v = btn.getAttribute('data-quick');
+      if (v === 'max') {
+        state.stake = Math.max(10, state.balance);
+      } else {
+        state.stake = Math.min(parseInt(v, 10), Math.max(10, state.balance));
+      }
+      document.getElementById('stake').value = state.stake;
+      render();
+    });
+  });
+
+  document.getElementById('place-bet').addEventListener('click', function() {
+    if (state.stake > state.balance || state.stake <= 0 || state.settled !== null) return;
+    var odds = state.side === 'yes' ? calcOdds(state.poolYes, state.poolNo) : calcOdds(state.poolNo, state.poolYes);
+    state.bets.unshift({
+      side: state.side,
+      stake: state.stake,
+      odds: odds,
+      timestamp: Date.now(),
+      resolved: null
+    });
+    state.balance -= state.stake;
+    if (state.side === 'yes') state.poolYes += state.stake;
+    else state.poolNo += state.stake;
+    toast('Bet placed: Ƒ' + fmt(state.stake) + ' on ' + state.side.toUpperCase());
+    render();
+  });
+
+  document.querySelectorAll('[data-settle]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var action = btn.getAttribute('data-settle');
+      if (action === 'reset') {
+        if (!confirm('Reset the market? All balances and bets will be cleared.')) return;
+        state = defaultState();
+        document.getElementById('stake').value = state.stake;
+        toast('Market reset');
+        render();
+        return;
+      }
+      if (state.settled !== null) {
+        toast('Market already settled');
+        return;
+      }
+      if (state.bets.length === 0) {
+        toast('No bets to settle');
+        return;
+      }
+      var winners = 0, losers = 0, totalPayout = 0;
+      state.bets.forEach(function(b) {
+        if (b.side === action) {
+          b.resolved = 'won';
+          state.balance += b.stake * b.odds;
+          totalPayout += b.stake * b.odds;
+          winners++;
+        } else {
+          b.resolved = 'lost';
+          losers++;
+        }
+      });
+      state.settled = action;
+      toast('Settled as ' + action.toUpperCase() + ' · ' + winners + ' won, ' + losers + ' lost');
+      render();
+    });
+  });
+
+  render();
+})();
+</script>
+
+</body>
+</html>
