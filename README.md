@@ -1,6 +1,12 @@
-# FungBucks Prediction Markets — v4 (Multi-market platform)
+# FungBucks Prediction Markets — v4.1 (Multi-market + Leaderboard + Global feed)
 
-Upgrade from v3. Turns the single-question app into a full markets platform where anyone signed in can create their own markets.
+Minor iteration on v4. Added:
+
+1. **Leaderboard panel** on the list view (top 10 players by balance, same as v3).
+2. **Global bet feed** showing the last 15 bets across all markets with clickable links to the source market.
+3. **Leaderboard opt-out** via a "toggle visibility" link in the leaderboard panel header.
+
+No schema changes from v4 — these features use existing tables and the existing `set_leaderboard_visibility` function. Everything in v4 schema is still required.
 
 ## What changed
 

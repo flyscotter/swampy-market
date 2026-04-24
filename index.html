@@ -172,6 +172,27 @@
   .dispute-item { background: var(--warning-bg); border-left: 3px solid var(--warning); border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: 8px; font-size: 13px; }
   .dispute-item-meta { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; }
 
+  /* Leaderboard */
+  .lb-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 0.5px solid var(--border); }
+  .lb-item:first-child { border-top: none; }
+  .lb-rank { font-size: 13px; font-weight: 500; color: var(--text-secondary); width: 24px; text-align: center; flex-shrink: 0; }
+  .lb-rank.gold { color: var(--gold); }
+  .lb-rank.silver { color: #C0C7CF; }
+  .lb-rank.bronze { color: #CD8862; }
+  .lb-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--surface-3); flex-shrink: 0; }
+  .lb-avatar-fallback { display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; color: var(--text-secondary); }
+  .lb-name { flex: 1; min-width: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lb-name.me { font-weight: 500; color: var(--yes-text); }
+  .lb-balance { font-size: 14px; font-weight: 500; flex-shrink: 0; }
+
+  /* Global feed */
+  .feed-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 0.5px solid var(--border); font-size: 13px; gap: 8px; }
+  .feed-item:first-child { border-top: none; }
+  .feed-item-left { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+  .feed-question { color: var(--text-secondary); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+  .feed-question:hover { color: var(--text); text-decoration: underline; }
+  .feed-time { color: var(--text-tertiary); font-size: 11px; flex-shrink: 0; }
+
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--surface-2); color: var(--text); padding: 10px 18px; border-radius: var(--radius-md); border: 0.5px solid var(--border-strong); font-size: 13px; opacity: 0; transition: opacity 0.2s, transform 0.2s; pointer-events: none; z-index: 100; max-width: 90%; }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   .toast.error { border-color: var(--danger); }
@@ -237,6 +258,26 @@
     </div>
     <div id="market-list" class="market-list">
       <div class="empty">Loading…</div>
+    </div>
+
+    <div class="bets-panel" style="margin-top: 20px;">
+      <div class="panel-head">
+        <span class="panel-title">Recent bets (all markets)</span>
+        <span class="panel-sub">Last 15</span>
+      </div>
+      <div id="global-feed">
+        <div class="empty">Loading feed…</div>
+      </div>
+    </div>
+
+    <div class="bets-panel">
+      <div class="panel-head">
+        <span class="panel-title">Leaderboard</span>
+        <span class="panel-sub">Top 10 by balance · <span id="lb-toggle-link" style="color: var(--text-secondary); cursor: pointer; text-decoration: underline;">toggle visibility</span></span>
+      </div>
+      <div id="leaderboard-list">
+        <div class="empty">Loading leaderboard…</div>
+      </div>
     </div>
   </div>
 
@@ -433,6 +474,8 @@
     detailBets: [],         // all bets on current market
     detailDisputes: [],     // disputes on current market
     myBets: [],             // global: my bets across all markets
+    leaderboard: [],
+    globalFeed: [],
     side: 'yes',
     stake: 100,
     betInFlight: false
@@ -511,6 +554,27 @@
     state.myBets = data || [];
   }
 
+  async function loadLeaderboard() {
+    var { data, error } = await supabase
+      .from('players')
+      .select('user_id, display_name, avatar_url, balance, bets_placed')
+      .eq('show_on_leaderboard', true)
+      .order('balance', { ascending: false })
+      .limit(10);
+    if (error) { console.error(error); state.leaderboard = []; return; }
+    state.leaderboard = data || [];
+  }
+
+  async function loadGlobalFeed() {
+    var { data, error } = await supabase
+      .from('bets')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(15);
+    if (error) { console.error(error); state.globalFeed = []; return; }
+    state.globalFeed = data || [];
+  }
+
   // ---------- navigation ----------
   function navigate(view, opts) {
     state.view = view;
@@ -570,6 +634,64 @@
 
     Array.prototype.forEach.call(list.querySelectorAll('[data-mid]'), function(el) {
       el.addEventListener('click', function() { openMarket(Number(el.getAttribute('data-mid'))); });
+    });
+
+    renderLeaderboard();
+    renderGlobalFeed();
+  }
+
+  function renderLeaderboard() {
+    var el = document.getElementById('leaderboard-list');
+    if (!el) return;
+    if (state.leaderboard.length === 0) {
+      el.innerHTML = '<div class="empty">No players yet.</div>';
+      return;
+    }
+    var myId = state.user ? state.user.id : null;
+    el.innerHTML = state.leaderboard.map(function(p, idx) {
+      var rank = idx + 1;
+      var rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
+      var isMe = p.user_id === myId;
+      var avatarHtml = p.avatar_url
+        ? '<img class="lb-avatar" src="' + escapeHtml(p.avatar_url) + '" alt="" />'
+        : '<div class="lb-avatar lb-avatar-fallback">' + escapeHtml(initials(p.display_name)) + '</div>';
+      return '<div class="lb-item">' +
+        '<span class="lb-rank ' + rankClass + '">' + rank + '</span>' +
+        avatarHtml +
+        '<span class="lb-name' + (isMe ? ' me' : '') + '">' + escapeHtml(p.display_name) + (isMe ? ' (you)' : '') + '</span>' +
+        '<span class="lb-balance">Ƒ' + fmt(p.balance) + '</span>' +
+      '</div>';
+    }).join('');
+  }
+
+  function renderGlobalFeed() {
+    var el = document.getElementById('global-feed');
+    if (!el) return;
+    if (state.globalFeed.length === 0) {
+      el.innerHTML = '<div class="empty">No bets yet.</div>';
+      return;
+    }
+    // Build a map of market id -> question for linking
+    var marketMap = {};
+    state.markets.forEach(function(m) { marketMap[m.id] = m; });
+
+    el.innerHTML = state.globalFeed.map(function(b) {
+      var tagClass = b.side === 'yes' ? 'tag-yes' : 'tag-no';
+      var market = marketMap[b.market_id];
+      var questionText = market ? market.question : '(market not found)';
+      var questionAttr = market ? 'data-mid="' + b.market_id + '"' : '';
+      return '<div class="feed-item">' +
+        '<div class="feed-item-left">' +
+          '<span class="side-tag ' + tagClass + '">' + b.side.toUpperCase() + '</span>' +
+          '<span>' + escapeHtml(b.display_name) + ' · Ƒ' + fmt(b.stake) + '</span>' +
+          '<span class="feed-question" ' + questionAttr + '>' + escapeHtml(questionText) + '</span>' +
+        '</div>' +
+        '<span class="feed-time">' + timeFromNow(b.created_at) + '</span>' +
+      '</div>';
+    }).join('');
+
+    Array.prototype.forEach.call(el.querySelectorAll('[data-mid]'), function(q) {
+      q.addEventListener('click', function() { openMarket(Number(q.getAttribute('data-mid'))); });
     });
   }
 
@@ -989,6 +1111,16 @@
     });
     document.getElementById('d-place-bet').addEventListener('click', handlePlaceBet);
     document.getElementById('submit-dispute').addEventListener('click', onRaiseDispute);
+    document.getElementById('lb-toggle-link').addEventListener('click', async function() {
+      if (!state.user || !state.player) { toast('Sign in first', true); return; }
+      var newVal = !state.player.show_on_leaderboard;
+      var { error } = await supabase.rpc('set_leaderboard_visibility', { visible: newVal });
+      if (error) { toast(error.message, true); return; }
+      toast(newVal ? 'Visible on leaderboard' : 'Hidden from leaderboard');
+      await ensurePlayer();
+      await loadLeaderboard();
+      render();
+    });
     Array.prototype.forEach.call(document.querySelectorAll('[data-admin]'), function(b) {
       b.addEventListener('click', function() { onAdminOverride(b.getAttribute('data-admin')); });
     });
@@ -1012,6 +1144,16 @@
         if (state.user && payload.new && payload.new.user_id === state.user.id) {
           await loadMyBets();
         }
+        // Refresh the global feed on any bet change.
+        await loadGlobalFeed();
+        render();
+      }).subscribe();
+    supabase.channel('players-ch')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, async function(payload) {
+        await loadLeaderboard();
+        if (state.user && payload.new && payload.new.user_id === state.user.id) {
+          state.player = payload.new;
+        }
         render();
       }).subscribe();
     supabase.channel('disputes-ch')
@@ -1022,10 +1164,7 @@
         }
       }).subscribe();
     if (state.user) {
-      supabase.channel('me-ch')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: 'user_id=eq.' + state.user.id }, async function(payload) {
-          if (payload.new) { state.player = payload.new; render(); }
-        }).subscribe();
+      // players-ch already handles our own player updates; nothing else needed here.
     }
   }
 
@@ -1034,6 +1173,8 @@
     try {
       wireUp();
       await loadMarkets();
+      await loadLeaderboard();
+      await loadGlobalFeed();
       var { data: { session } } = await supabase.auth.getSession();
       if (session && session.user) {
         state.user = session.user;
