@@ -202,6 +202,13 @@
   .feed-question:hover { color: var(--text); text-decoration: underline; }
   .feed-time { color: var(--text-tertiary); font-size: 11px; flex-shrink: 0; }
 
+  /* Wallet */
+  .wallet-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .wallet-card { background: var(--surface-2); border-radius: var(--radius-md); padding: 14px; }
+  .wallet-card-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+  .wallet-card-amount { font-size: 20px; font-weight: 500; color: var(--yes-text); }
+  .wallet-card-status { font-size: 11px; color: var(--text-tertiary); margin-top: 6px; min-height: 14px; }
+
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--surface-2); color: var(--text); padding: 10px 18px; border-radius: var(--radius-md); border: 0.5px solid var(--border-strong); font-size: 13px; opacity: 0; transition: opacity 0.2s, transform 0.2s; pointer-events: none; z-index: 100; max-width: 90%; }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   .toast.error { border-color: var(--danger); }
@@ -259,6 +266,28 @@
 
   <!-- View: list -->
   <div id="view-list" class="hidden">
+
+    <div id="wallet-panel" class="bets-panel hidden">
+      <div class="panel-head">
+        <span class="panel-title">Wallet</span>
+        <span class="panel-sub">Claim FungBucks</span>
+      </div>
+      <div class="wallet-grid">
+        <div class="wallet-card">
+          <div class="wallet-card-label">Weekly stipend</div>
+          <div class="wallet-card-amount">Ƒ200</div>
+          <div class="wallet-card-status" id="ubi-status">—</div>
+          <button id="claim-ubi-btn" class="icon-btn primary" style="margin-top: 8px; width: 100%;">Claim</button>
+        </div>
+        <div class="wallet-card">
+          <div class="wallet-card-label">Emergency reset</div>
+          <div class="wallet-card-amount">→ Ƒ500</div>
+          <div class="wallet-card-status" id="reset-status">—</div>
+          <button id="claim-reset-btn" class="icon-btn" style="margin-top: 8px; width: 100%;">Reset</button>
+        </div>
+      </div>
+    </div>
+
     <div class="tabs">
       <button class="tab active" data-tab="open">Open</button>
       <button class="tab" data-tab="pending">Pending</button>
@@ -442,6 +471,14 @@
           <button class="admin-btn yes" data-admin="yes">Force Yes</button>
           <button class="admin-btn no" data-admin="no">Force No</button>
           <button class="admin-btn cancel" data-admin="cancelled">Cancel market</button>
+        </div>
+
+        <div style="margin-top: 20px; padding-top: 16px; border-top: 0.5px solid var(--border);">
+          <h3 style="margin-bottom: 4px;">Admin grant</h3>
+          <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 10px;">Top up (or deduct from) a specific user's balance. Use their user_id from the Supabase players table.</p>
+          <input type="text" id="grant-user-id" class="admin-input" placeholder="Target user_id (UUID)" />
+          <input type="number" id="grant-amount" class="admin-input" placeholder="Amount (negative to deduct)" step="any" />
+          <button id="grant-btn" class="admin-btn" style="width: 100%;">Grant FungBucks</button>
         </div>
       </div>
 
@@ -649,8 +686,62 @@
       el.addEventListener('click', function() { openMarket(Number(el.getAttribute('data-mid'))); });
     });
 
+    renderWallet();
     renderLeaderboard();
     renderGlobalFeed();
+  }
+
+  function renderWallet() {
+    var panel = document.getElementById('wallet-panel');
+    if (!state.user || !state.player) {
+      panel.classList.add('hidden');
+      return;
+    }
+    panel.classList.remove('hidden');
+
+    // UBI status
+    var ubiStatus = document.getElementById('ubi-status');
+    var ubiBtn = document.getElementById('claim-ubi-btn');
+    var UBI_PERIOD_MS = 7 * 24 * 3600 * 1000;
+    if (!state.player.last_ubi_claim) {
+      ubiStatus.textContent = 'Ready to claim';
+      ubiBtn.disabled = false;
+    } else {
+      var lastClaim = new Date(state.player.last_ubi_claim);
+      var nextClaim = new Date(lastClaim.getTime() + UBI_PERIOD_MS);
+      if (nextClaim <= new Date()) {
+        ubiStatus.textContent = 'Ready to claim';
+        ubiBtn.disabled = false;
+      } else {
+        ubiStatus.textContent = 'Next claim ' + timeFromNow(nextClaim.toISOString());
+        ubiBtn.disabled = true;
+      }
+    }
+
+    // Emergency reset status
+    var resetStatus = document.getElementById('reset-status');
+    var resetBtn = document.getElementById('claim-reset-btn');
+    var RESET_PERIOD_MS = 7 * 24 * 3600 * 1000;
+    var RESET_THRESHOLD = 50;
+    var balance = Number(state.player.balance);
+
+    if (balance >= RESET_THRESHOLD) {
+      resetStatus.textContent = 'Only below Ƒ' + RESET_THRESHOLD;
+      resetBtn.disabled = true;
+    } else if (state.player.last_reset_claim) {
+      var lastReset = new Date(state.player.last_reset_claim);
+      var nextReset = new Date(lastReset.getTime() + RESET_PERIOD_MS);
+      if (nextReset <= new Date()) {
+        resetStatus.textContent = 'Ready — top up to Ƒ500';
+        resetBtn.disabled = false;
+      } else {
+        resetStatus.textContent = 'Next reset ' + timeFromNow(nextReset.toISOString());
+        resetBtn.disabled = true;
+      }
+    } else {
+      resetStatus.textContent = 'Ready — top up to Ƒ500';
+      resetBtn.disabled = false;
+    }
   }
 
   function renderLeaderboard() {
@@ -1124,6 +1215,43 @@
     });
     document.getElementById('d-place-bet').addEventListener('click', handlePlaceBet);
     document.getElementById('submit-dispute').addEventListener('click', onRaiseDispute);
+
+    document.getElementById('claim-ubi-btn').addEventListener('click', async function() {
+      var { data, error } = await supabase.rpc('claim_ubi');
+      if (error) { toast(error.message, true); return; }
+      toast('Claimed Ƒ' + fmt(data.claimed) + ' weekly stipend');
+      await ensurePlayer();
+      render();
+    });
+
+    document.getElementById('claim-reset-btn').addEventListener('click', async function() {
+      if (!confirm('Emergency reset your balance to Ƒ500? You can only do this once per 7 days, and only when your balance is below Ƒ50.')) return;
+      var { data, error } = await supabase.rpc('claim_emergency_reset');
+      if (error) { toast(error.message, true); return; }
+      toast('Reset to Ƒ500 (topped up by Ƒ' + fmt(data.topped_up_by) + ')');
+      await ensurePlayer();
+      render();
+    });
+
+    document.getElementById('grant-btn').addEventListener('click', async function() {
+      var pw = document.getElementById('admin-pw').value;
+      var targetId = document.getElementById('grant-user-id').value.trim();
+      var amount = Number(document.getElementById('grant-amount').value);
+      if (!pw) { toast('Enter admin password', true); return; }
+      if (!targetId) { toast('Enter a target user ID', true); return; }
+      if (!amount || isNaN(amount)) { toast('Enter a non-zero amount', true); return; }
+      if (!confirm('Grant ' + (amount >= 0 ? '+' : '') + 'Ƒ' + fmt(amount) + ' to user ' + targetId + '?')) return;
+      var { data, error } = await supabase.rpc('admin_grant', {
+        target_user_id: targetId,
+        amount: amount,
+        admin_password: pw
+      });
+      if (error) { toast(error.message, true); return; }
+      toast('Granted ' + (amount >= 0 ? '+' : '') + 'Ƒ' + fmt(amount) + ' to ' + data.target + ' (new balance: Ƒ' + fmt(data.new_balance) + ')');
+      document.getElementById('grant-user-id').value = '';
+      document.getElementById('grant-amount').value = '';
+    });
+
     document.getElementById('lb-toggle-link').addEventListener('click', async function() {
       if (!state.user || !state.player) { toast('Sign in first', true); return; }
       var newVal = !state.player.show_on_leaderboard;

@@ -337,7 +337,7 @@ security definer
 set search_path = public
 as $$
 declare
-  admin_secret constant text := ',VKLH5V+aq&Q5P/';
+  admin_secret constant text := 'swampy-admin-CHANGE-ME';
   cooling_period constant interval := '1 hour';
 
   m           public.markets;
@@ -437,7 +437,7 @@ security definer
 set search_path = public
 as $$
 declare
-  admin_secret constant text := ',VKLH5V+aq&Q5P/';
+  admin_secret constant text := 'swampy-admin-CHANGE-ME';
 
   m           public.markets;
   b           record;
