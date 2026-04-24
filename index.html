@@ -8,7 +8,15 @@
 <meta property="og:title" content="FungBucks Prediction Markets" />
 <meta property="og:description" content="Community prediction markets. Create your own, bet on others, pay out in FungBucks (Ƒ)." />
 <meta property="og:type" content="website" />
+<meta property="og:image" content="coin-512.png" />
+<meta property="og:image:width" content="512" />
+<meta property="og:image:height" content="512" />
 <meta name="theme-color" content="#1D9E75" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="coin-32.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="coin-192.png" />
+<link rel="shortcut icon" href="favicon.ico" />
+<link rel="apple-touch-icon" href="coin-192.png" />
 
 <style>
   :root {
@@ -45,7 +53,8 @@
   a:hover { text-decoration: underline; }
 
   .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding: 10px 16px; background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius-lg); gap: 12px; }
-  .top-bar-brand { font-size: 14px; font-weight: 500; cursor: pointer; user-select: none; }
+  .top-bar-brand { font-size: 14px; font-weight: 500; cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 8px; }
+  .brand-coin { border-radius: 50%; display: block; flex-shrink: 0; }
   .top-bar-user { display: flex; align-items: center; gap: 10px; flex-shrink: 0; min-width: 0; }
   .user-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--surface-3); flex-shrink: 0; }
   .user-avatar-fallback { display: flex; align-items: center; justify-content: center; font-weight: 500; font-size: 12px; color: var(--text-secondary); }
@@ -213,6 +222,7 @@
     .stat-card:first-child { grid-column: 1 / -1; }
     .form-two-col { grid-template-columns: 1fr; }
     .top-bar { padding: 8px 12px; }
+    .top-bar-brand span { display: none; }
     .user-name { max-width: 100px; }
     .header-card, .bet-panel, .bets-panel, .admin-panel, .creator-panel, .form-panel, .dispute-panel { padding: 14px 16px; }
     h1 { font-size: 19px; }
@@ -231,7 +241,10 @@
   <div id="loading" class="loading">Loading…</div>
 
   <div id="top-bar" class="top-bar hidden">
-    <span id="brand" class="top-bar-brand">Ƒ FungBucks Markets</span>
+    <span id="brand" class="top-bar-brand">
+      <img src="coin-48.png" alt="" width="28" height="28" class="brand-coin" />
+      <span>FungBucks Markets</span>
+    </span>
     <div class="top-bar-user">
       <span id="signin-wrapper"><button id="google-signin" class="icon-btn primary">Sign in</button></span>
       <span id="user-wrapper" class="hidden" style="display: flex; align-items: center; gap: 10px;">
