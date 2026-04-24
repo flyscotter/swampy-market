@@ -1,100 +1,114 @@
 -- ============================================================================
--- Swampy Prediction Market — v3 Schema (Google OAuth + leaderboard)
+-- Swampy Prediction Market — v4 Schema (Multi-market platform)
 -- ============================================================================
--- This is a FRESH START schema. It drops all v2 tables and rebuilds.
--- If you have anonymous user data you want to keep, DO NOT RUN THIS.
--- Paste this entire file into Supabase SQL Editor and click Run.
+-- Upgrade from v3. Adds:
+--   1. Multiple markets instead of a single market row
+--   2. User-created markets with creator-seeded pools
+--   3. Creator-proposed resolution with admin override
+--   4. Yes/No/Cancelled resolution types
+--   5. Close dates enforced at the database level
+--   6. Disputes table for flagging bad resolutions
+--
+-- This migration PRESERVES existing player accounts and balances but WIPES
+-- the single Swampy market and its bets. If you want to keep them, don't run
+-- this.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- 0. Nuke v2 tables (fresh start)
+-- 0. Drop v3 single-market structures
 -- ----------------------------------------------------------------------------
+drop function if exists public.place_bet(text, numeric);
 drop function if exists public.settle_market(text, text);
 drop function if exists public.reset_market(text);
-drop function if exists public.place_bet(text, numeric);
-drop function if exists public.ensure_player();
-drop function if exists public.get_leaderboard(int);
 
 drop table if exists public.bets cascade;
-drop table if exists public.players cascade;
 drop table if exists public.market cascade;
 
--- Also clear Supabase Auth users so everyone starts fresh.
--- This deletes all existing user accounts (anonymous and otherwise).
-delete from auth.users;
+-- Keep players table, but add some stats columns if they don't exist.
+alter table public.players add column if not exists markets_created int not null default 0;
+
+-- Reset player stats since markets are being wiped.
+update public.players set
+  total_wagered = 0,
+  total_won = 0,
+  bets_placed = 0,
+  bets_won = 0,
+  bets_lost = 0;
 
 -- ----------------------------------------------------------------------------
 -- 1. Tables
 -- ----------------------------------------------------------------------------
 
-create table public.market (
-  id               int primary key default 1,
-  question         text not null,
-  pool_yes         numeric not null default 7719,
-  pool_no          numeric not null default 4731,
-  house_edge       numeric not null default 0.95,
-  settled_outcome  text check (settled_outcome in ('yes', 'no')) default null,
-  settled_at       timestamptz default null,
-  created_at       timestamptz not null default now(),
-  constraint single_row check (id = 1)
+-- Multi-market table.
+create table public.markets (
+  id                  bigserial primary key,
+  creator_id          uuid not null references auth.users(id) on delete set null,
+  creator_name        text not null,
+  question            text not null check (length(trim(question)) between 10 and 200),
+  description         text check (length(description) <= 1000),
+  pool_yes            numeric not null default 0 check (pool_yes >= 0),
+  pool_no             numeric not null default 0 check (pool_no >= 0),
+  house_edge          numeric not null default 0.95,
+  close_at            timestamptz not null,
+  status              text not null default 'open'
+                      check (status in ('open', 'pending_resolution', 'settled', 'cancelled')),
+  proposed_outcome    text check (proposed_outcome in ('yes', 'no', 'cancelled')) default null,
+  proposed_by         uuid references auth.users(id) on delete set null,
+  proposed_at         timestamptz,
+  settled_outcome     text check (settled_outcome in ('yes', 'no', 'cancelled')) default null,
+  settled_at          timestamptz,
+  settled_by          uuid references auth.users(id) on delete set null,
+  created_at          timestamptz not null default now()
 );
 
-create table public.players (
-  user_id              uuid primary key references auth.users(id) on delete cascade,
-  balance              numeric not null default 1000,
-  display_name         text not null,
-  avatar_url           text,
-  email                text,
-  show_on_leaderboard  boolean not null default true,
-  total_wagered        numeric not null default 0,
-  total_won            numeric not null default 0,
-  bets_placed          int not null default 0,
-  bets_won             int not null default 0,
-  bets_lost            int not null default 0,
-  created_at           timestamptz not null default now()
-);
+create index markets_status_idx on public.markets(status);
+create index markets_close_at_idx on public.markets(close_at);
+create index markets_creator_idx on public.markets(creator_id);
 
-create index players_leaderboard_idx on public.players(show_on_leaderboard, balance desc);
-
+-- Bets now reference a specific market.
 create table public.bets (
   id               bigserial primary key,
+  market_id        bigint not null references public.markets(id) on delete cascade,
   user_id          uuid not null references auth.users(id) on delete cascade,
   display_name     text not null,
   side             text not null check (side in ('yes', 'no')),
   stake            numeric not null check (stake > 0),
   odds             numeric not null check (odds > 0),
-  resolved         text check (resolved in ('won', 'lost')) default null,
+  resolved         text check (resolved in ('won', 'lost', 'refunded')) default null,
   payout           numeric default null,
   created_at       timestamptz not null default now()
 );
 
-create index bets_user_id_idx on public.bets(user_id);
+create index bets_market_idx on public.bets(market_id);
+create index bets_user_idx on public.bets(user_id);
 create index bets_created_at_idx on public.bets(created_at desc);
 
-insert into public.market (id, question)
-values (1, 'Will Swampy take down the Elite Four by the end of the week?');
+-- Disputes raised against a proposed resolution.
+create table public.disputes (
+  id               bigserial primary key,
+  market_id        bigint not null references public.markets(id) on delete cascade,
+  user_id          uuid not null references auth.users(id) on delete cascade,
+  display_name     text not null,
+  reason           text not null check (length(trim(reason)) between 5 and 500),
+  created_at       timestamptz not null default now()
+);
+
+create index disputes_market_idx on public.disputes(market_id);
 
 -- ----------------------------------------------------------------------------
 -- 2. Row Level Security
 -- ----------------------------------------------------------------------------
 
-alter table public.market  enable row level security;
-alter table public.players enable row level security;
-alter table public.bets    enable row level security;
+alter table public.markets  enable row level security;
+alter table public.bets     enable row level security;
+alter table public.disputes enable row level security;
 
--- Market is fully readable.
-create policy "market_read_all" on public.market for select using (true);
+-- Public read on all market-related data.
+create policy "markets_read_all"  on public.markets  for select using (true);
+create policy "bets_read_all"     on public.bets     for select using (true);
+create policy "disputes_read_all" on public.disputes for select using (true);
 
--- Players: everyone can see display_name, avatar, balance, stats, but only
--- for players who haven't opted out of the leaderboard — EXCEPT you can
--- always see your own row.
-create policy "players_read_public" on public.players for select
-  using (show_on_leaderboard = true or user_id = auth.uid());
-
--- Bets: readable by everyone (for global feed / leaderboard drill-down).
-create policy "bets_read_all" on public.bets for select using (true);
-
--- No direct insert/update/delete. All writes go through functions.
+-- Writes go through functions only.
 
 -- ----------------------------------------------------------------------------
 -- 3. Realtime
@@ -102,14 +116,14 @@ create policy "bets_read_all" on public.bets for select using (true);
 
 do $$
 begin
-  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'market') then
-    alter publication supabase_realtime add table public.market;
-  end if;
-  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'players') then
-    alter publication supabase_realtime add table public.players;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'markets') then
+    alter publication supabase_realtime add table public.markets;
   end if;
   if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'bets') then
     alter publication supabase_realtime add table public.bets;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'disputes') then
+    alter publication supabase_realtime add table public.disputes;
   end if;
 end $$;
 
@@ -117,114 +131,87 @@ end $$;
 -- 4. Functions
 -- ----------------------------------------------------------------------------
 
--- Create or fetch player row. Pulls display_name from Google OAuth metadata.
-create or replace function public.ensure_player()
-returns public.players
+-- Create a new market. Creator puts up their own seed money.
+-- Minimum seed is 500 FungBucks total, split as 250/250 default, or custom.
+create or replace function public.create_market(
+  q text,
+  description_text text,
+  seed_yes numeric,
+  seed_no numeric,
+  close_at_param timestamptz
+)
+returns public.markets
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  p          public.players;
-  user_data  auth.users;
-  name_val   text;
-  email_val  text;
-  avatar_val text;
+  p       public.players;
+  m       public.markets;
+  total   numeric;
 begin
   if auth.uid() is null then
     raise exception 'Not authenticated';
   end if;
 
-  select * into user_data from auth.users where id = auth.uid();
-
-  -- Pull Google identity fields from raw_user_meta_data.
-  name_val   := coalesce(
-    user_data.raw_user_meta_data->>'full_name',
-    user_data.raw_user_meta_data->>'name',
-    split_part(user_data.email, '@', 1),
-    'Player'
-  );
-  email_val  := user_data.email;
-  avatar_val := user_data.raw_user_meta_data->>'avatar_url';
-
-  insert into public.players (user_id, display_name, email, avatar_url)
-  values (auth.uid(), name_val, email_val, avatar_val)
-  on conflict (user_id) do update
-    set display_name = coalesce(public.players.display_name, excluded.display_name),
-        email        = excluded.email,
-        avatar_url   = excluded.avatar_url;
-
-  select * into p from public.players where user_id = auth.uid();
-  return p;
-end;
-$$;
-
--- Toggle leaderboard visibility for the current user.
-create or replace function public.set_leaderboard_visibility(visible boolean)
-returns public.players
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  p public.players;
-begin
-  if auth.uid() is null then
-    raise exception 'Not authenticated';
+  if q is null or length(trim(q)) < 10 or length(trim(q)) > 200 then
+    raise exception 'Question must be 10-200 characters';
   end if;
 
+  if description_text is not null and length(description_text) > 1000 then
+    raise exception 'Description must be under 1000 characters';
+  end if;
+
+  if seed_yes is null or seed_no is null or seed_yes <= 0 or seed_no <= 0 then
+    raise exception 'Both seed amounts must be positive';
+  end if;
+
+  total := seed_yes + seed_no;
+  if total < 500 then
+    raise exception 'Total seed must be at least Ƒ500 (you entered Ƒ%)', total;
+  end if;
+
+  if close_at_param is null or close_at_param <= now() + interval '5 minutes' then
+    raise exception 'Close date must be at least 5 minutes in the future';
+  end if;
+
+  if close_at_param > now() + interval '90 days' then
+    raise exception 'Close date cannot be more than 90 days out';
+  end if;
+
+  select * into p from public.players where user_id = auth.uid() for update;
+  if p is null then raise exception 'Player not initialized — reload'; end if;
+  if p.balance < total then
+    raise exception 'Insufficient balance to seed: have Ƒ%, need Ƒ%', p.balance, total;
+  end if;
+
+  -- Deduct seed from creator balance.
   update public.players
-    set show_on_leaderboard = visible
-    where user_id = auth.uid()
-    returning * into p;
+    set balance = balance - total,
+        markets_created = markets_created + 1
+    where user_id = auth.uid();
 
-  return p;
+  insert into public.markets (creator_id, creator_name, question, description, pool_yes, pool_no, close_at)
+  values (auth.uid(), p.display_name, trim(q), nullif(trim(description_text), ''), seed_yes, seed_no, close_at_param)
+  returning * into m;
+
+  return m;
 end;
 $$;
 
--- Update display name for the current user.
-create or replace function public.set_display_name(new_name text)
-returns public.players
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  p public.players;
-  trimmed text;
-begin
-  if auth.uid() is null then
-    raise exception 'Not authenticated';
-  end if;
-
-  trimmed := trim(new_name);
-
-  if trimmed is null or length(trimmed) < 1 or length(trimmed) > 40 then
-    raise exception 'Display name must be 1-40 characters';
-  end if;
-
-  update public.players
-    set display_name = trimmed
-    where user_id = auth.uid()
-    returning * into p;
-
-  -- Also update their display name on existing bets so the feed/leaderboard
-  -- reflects their current name.
-  update public.bets set display_name = trimmed where user_id = auth.uid();
-
-  return p;
-end;
-$$;
-
--- Place a bet atomically.
-create or replace function public.place_bet(bet_side text, bet_stake numeric)
+-- Place a bet on a specific market.
+create or replace function public.place_bet(
+  target_market_id bigint,
+  bet_side text,
+  bet_stake numeric
+)
 returns public.bets
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  m         public.market;
+  m         public.markets;
   p         public.players;
   new_odds  numeric;
   new_bet   public.bets;
@@ -241,20 +228,25 @@ begin
     raise exception 'Stake must be positive';
   end if;
 
-  select * into m from public.market where id = 1 for update;
+  select * into m from public.markets where id = target_market_id for update;
+  if m is null then
+    raise exception 'Market not found';
+  end if;
 
-  if m.settled_outcome is not null then
-    raise exception 'Market already settled';
+  if m.status <> 'open' then
+    raise exception 'Market is not open for betting (status: %)', m.status;
+  end if;
+
+  if now() >= m.close_at then
+    raise exception 'Market has closed';
   end if;
 
   select * into p from public.players where user_id = auth.uid() for update;
-
   if p is null then
-    raise exception 'Player not initialized — reload the page';
+    raise exception 'Player not initialized — reload';
   end if;
-
   if p.balance < bet_stake then
-    raise exception 'Insufficient balance (have %, need %)', p.balance, bet_stake;
+    raise exception 'Insufficient balance (have Ƒ%, need Ƒ%)', p.balance, bet_stake;
   end if;
 
   if bet_side = 'yes' then
@@ -269,37 +261,189 @@ begin
         bets_placed = bets_placed + 1
     where user_id = auth.uid();
 
-  insert into public.bets (user_id, display_name, side, stake, odds)
-  values (auth.uid(), p.display_name, bet_side, bet_stake, new_odds)
+  insert into public.bets (market_id, user_id, display_name, side, stake, odds)
+  values (target_market_id, auth.uid(), p.display_name, bet_side, bet_stake, new_odds)
   returning * into new_bet;
 
   if bet_side = 'yes' then
-    update public.market set pool_yes = pool_yes + bet_stake where id = 1;
+    update public.markets set pool_yes = pool_yes + bet_stake where id = target_market_id;
   else
-    update public.market set pool_no  = pool_no  + bet_stake where id = 1;
+    update public.markets set pool_no  = pool_no  + bet_stake where id = target_market_id;
   end if;
 
   return new_bet;
 end;
 $$;
 
--- Settle the market (admin only).
-create or replace function public.settle_market(outcome text, admin_password text)
+-- Creator proposes a resolution. Market enters pending_resolution state.
+-- Does NOT pay out yet — gives disputers a window to object.
+create or replace function public.propose_resolution(
+  target_market_id bigint,
+  outcome text
+)
+returns public.markets
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  m public.markets;
+begin
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if outcome not in ('yes', 'no', 'cancelled') then
+    raise exception 'Outcome must be yes, no, or cancelled';
+  end if;
+
+  select * into m from public.markets where id = target_market_id for update;
+  if m is null then raise exception 'Market not found'; end if;
+
+  if m.creator_id <> auth.uid() then
+    raise exception 'Only the market creator can propose a resolution';
+  end if;
+
+  if m.status not in ('open', 'pending_resolution') then
+    raise exception 'Market is already settled or cancelled';
+  end if;
+
+  if now() < m.close_at and outcome <> 'cancelled' then
+    raise exception 'Cannot resolve before close date (only cancel allowed)';
+  end if;
+
+  update public.markets
+    set status = 'pending_resolution',
+        proposed_outcome = outcome,
+        proposed_by = auth.uid(),
+        proposed_at = now()
+    where id = target_market_id
+    returning * into m;
+
+  return m;
+end;
+$$;
+
+-- Creator confirms their own proposed resolution after a cooling period
+-- (or admin can skip the wait). Pays out winners.
+-- Cooling period: 1 hour from proposal, unless overridden by admin.
+create or replace function public.confirm_resolution(
+  target_market_id bigint,
+  admin_password text
+)
 returns jsonb
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  -- ============================================================
-  -- CHANGE THIS PASSWORD BEFORE DEPLOYING.
-  -- ============================================================
   admin_secret constant text := ',VKLH5V+aq&Q5P/';
+  cooling_period constant interval := '1 hour';
 
-  m           public.market;
+  m           public.markets;
   b           record;
   winners     int := 0;
   losers      int := 0;
+  refunded    int := 0;
+  total_paid  numeric := 0;
+  payout_val  numeric;
+  is_admin    boolean;
+  outcome     text;
+begin
+  is_admin := (admin_password is not null and admin_password = admin_secret);
+
+  if auth.uid() is null and not is_admin then
+    raise exception 'Not authenticated';
+  end if;
+
+  select * into m from public.markets where id = target_market_id for update;
+  if m is null then raise exception 'Market not found'; end if;
+
+  if m.status <> 'pending_resolution' then
+    raise exception 'Market is not pending resolution (status: %)', m.status;
+  end if;
+
+  -- Only creator or admin can confirm.
+  if m.creator_id <> auth.uid() and not is_admin then
+    raise exception 'Only the creator or admin can confirm the resolution';
+  end if;
+
+  -- Creator must wait out the cooling period; admin can skip.
+  if not is_admin and now() < m.proposed_at + cooling_period then
+    raise exception 'Cooling period not over (% left)',
+      (m.proposed_at + cooling_period - now())::text;
+  end if;
+
+  outcome := m.proposed_outcome;
+
+  for b in select * from public.bets where market_id = target_market_id and resolved is null loop
+    if outcome = 'cancelled' then
+      -- Refund every bet.
+      update public.players set balance = balance + b.stake where user_id = b.user_id;
+      update public.bets set resolved = 'refunded', payout = b.stake where id = b.id;
+      refunded := refunded + 1;
+    elsif b.side = outcome then
+      payout_val := b.stake * b.odds;
+      update public.players
+        set balance = balance + payout_val,
+            total_won = total_won + payout_val,
+            bets_won = bets_won + 1
+        where user_id = b.user_id;
+      update public.bets set resolved = 'won', payout = payout_val where id = b.id;
+      winners := winners + 1;
+      total_paid := total_paid + payout_val;
+    else
+      update public.players set bets_lost = bets_lost + 1 where user_id = b.user_id;
+      update public.bets set resolved = 'lost', payout = 0 where id = b.id;
+      losers := losers + 1;
+    end if;
+  end loop;
+
+  -- If cancelled, also refund the creator's initial seed.
+  if outcome = 'cancelled' then
+    update public.players
+      set balance = balance + (m.pool_yes + m.pool_no) - (
+        select coalesce(sum(stake), 0) from public.bets where market_id = target_market_id
+      )
+      where user_id = m.creator_id;
+  end if;
+
+  update public.markets
+    set status = 'settled',
+        settled_outcome = outcome,
+        settled_at = now(),
+        settled_by = coalesce(auth.uid(), m.creator_id)
+    where id = target_market_id;
+
+  return jsonb_build_object(
+    'outcome', outcome,
+    'winners', winners,
+    'losers', losers,
+    'refunded', refunded,
+    'total_paid', total_paid
+  );
+end;
+$$;
+
+-- Admin can override a pending resolution with a different outcome.
+create or replace function public.admin_override_resolution(
+  target_market_id bigint,
+  outcome text,
+  admin_password text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  admin_secret constant text := ',VKLH5V+aq&Q5P/';
+
+  m           public.markets;
+  b           record;
+  winners     int := 0;
+  losers      int := 0;
+  refunded    int := 0;
   total_paid  numeric := 0;
   payout_val  numeric;
 begin
@@ -307,93 +451,111 @@ begin
     raise exception 'Invalid admin password';
   end if;
 
-  if outcome not in ('yes', 'no') then
-    raise exception 'Outcome must be yes or no';
+  if outcome not in ('yes', 'no', 'cancelled') then
+    raise exception 'Outcome must be yes, no, or cancelled';
   end if;
 
-  select * into m from public.market where id = 1 for update;
+  select * into m from public.markets where id = target_market_id for update;
+  if m is null then raise exception 'Market not found'; end if;
 
-  if m.settled_outcome is not null then
-    raise exception 'Market already settled';
+  if m.status = 'settled' then
+    raise exception 'Market already settled — cannot override';
   end if;
 
-  for b in select * from public.bets where resolved is null loop
-    if b.side = outcome then
+  for b in select * from public.bets where market_id = target_market_id and resolved is null loop
+    if outcome = 'cancelled' then
+      update public.players set balance = balance + b.stake where user_id = b.user_id;
+      update public.bets set resolved = 'refunded', payout = b.stake where id = b.id;
+      refunded := refunded + 1;
+    elsif b.side = outcome then
       payout_val := b.stake * b.odds;
-
       update public.players
         set balance = balance + payout_val,
             total_won = total_won + payout_val,
             bets_won = bets_won + 1
         where user_id = b.user_id;
-
-      update public.bets
-        set resolved = 'won', payout = payout_val
-        where id = b.id;
-
+      update public.bets set resolved = 'won', payout = payout_val where id = b.id;
       winners := winners + 1;
       total_paid := total_paid + payout_val;
     else
-      update public.players
-        set bets_lost = bets_lost + 1
-        where user_id = b.user_id;
-
-      update public.bets
-        set resolved = 'lost', payout = 0
-        where id = b.id;
-
+      update public.players set bets_lost = bets_lost + 1 where user_id = b.user_id;
+      update public.bets set resolved = 'lost', payout = 0 where id = b.id;
       losers := losers + 1;
     end if;
   end loop;
 
-  update public.market
-    set settled_outcome = outcome, settled_at = now()
-    where id = 1;
+  if outcome = 'cancelled' then
+    update public.players
+      set balance = balance + (m.pool_yes + m.pool_no) - (
+        select coalesce(sum(stake), 0) from public.bets where market_id = target_market_id
+      )
+      where user_id = m.creator_id;
+  end if;
+
+  update public.markets
+    set status = 'settled',
+        settled_outcome = outcome,
+        settled_at = now(),
+        settled_by = auth.uid()
+    where id = target_market_id;
 
   return jsonb_build_object(
     'outcome', outcome,
     'winners', winners,
     'losers', losers,
+    'refunded', refunded,
     'total_paid', total_paid
   );
 end;
 $$;
 
--- Reset the market (admin only). Nukes bets, resets balances and pools.
-create or replace function public.reset_market(admin_password text)
-returns void
+-- Anyone signed in can raise a dispute on a pending resolution.
+create or replace function public.raise_dispute(
+  target_market_id bigint,
+  reason_text text
+)
+returns public.disputes
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  admin_secret constant text := ',VKLH5V+aq&Q5P/';
+  m  public.markets;
+  p  public.players;
+  d  public.disputes;
 begin
-  if admin_password is null or admin_password <> admin_secret then
-    raise exception 'Invalid admin password';
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
   end if;
 
-  delete from public.bets;
-  update public.players set
-    balance = 1000,
-    total_wagered = 0,
-    total_won = 0,
-    bets_placed = 0,
-    bets_won = 0,
-    bets_lost = 0;
-  update public.market
-    set pool_yes = 7719,
-        pool_no = 4731,
-        settled_outcome = null,
-        settled_at = null
-    where id = 1;
+  if reason_text is null or length(trim(reason_text)) < 5 then
+    raise exception 'Dispute reason must be at least 5 characters';
+  end if;
+  if length(trim(reason_text)) > 500 then
+    raise exception 'Dispute reason must be under 500 characters';
+  end if;
+
+  select * into m from public.markets where id = target_market_id;
+  if m is null then raise exception 'Market not found'; end if;
+  if m.status <> 'pending_resolution' then
+    raise exception 'Can only dispute markets with a pending resolution';
+  end if;
+
+  select * into p from public.players where user_id = auth.uid();
+  if p is null then raise exception 'Player not initialized — reload'; end if;
+
+  insert into public.disputes (market_id, user_id, display_name, reason)
+  values (target_market_id, auth.uid(), p.display_name, trim(reason_text))
+  returning * into d;
+
+  return d;
 end;
 $$;
 
 -- Grants.
-grant execute on function public.ensure_player()                       to authenticated;
-grant execute on function public.place_bet(text, numeric)              to authenticated;
-grant execute on function public.settle_market(text, text)             to authenticated;
-grant execute on function public.reset_market(text)                    to authenticated;
-grant execute on function public.set_leaderboard_visibility(boolean)   to authenticated;
-grant execute on function public.set_display_name(text)                to authenticated;
+grant execute on function public.create_market(text, text, numeric, numeric, timestamptz) to authenticated;
+grant execute on function public.place_bet(bigint, text, numeric)                           to authenticated;
+grant execute on function public.propose_resolution(bigint, text)                           to authenticated;
+grant execute on function public.confirm_resolution(bigint, text)                           to authenticated;
+grant execute on function public.admin_override_resolution(bigint, text, text)              to authenticated;
+grant execute on function public.raise_dispute(bigint, text)                                to authenticated;
