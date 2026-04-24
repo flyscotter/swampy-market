@@ -1,4 +1,31 @@
-# FungBucks Prediction Markets — v4.2 (Injection mechanisms)
+# FungBucks Prediction Markets — v4.3 (Tab restructure)
+
+Small iteration on v4.2. Moved the Recent Bets feed and Leaderboard out from below the market list into their own dedicated tabs.
+
+## What changed
+
+1. Two new tabs on the list view: **Feed** and **Leaderboard**. They sit next to Open / Pending / Settled / My bets / My markets.
+2. When Feed or Leaderboard is selected, the market list and "+ New market" button hide. When any of the market tabs is selected, Feed and Leaderboard hide.
+3. No schema changes. Purely a UI restructure.
+
+## Deploy
+
+1. Copy `index.html` and `README.md` into `C:\Users\scotch\swampy-market`, overwriting the v4.2 versions.
+2. Confirm SUPABASE_URL and SUPABASE_ANON_KEY are still filled in.
+3. Push:
+
+```
+cd C:\Users\scotch\swampy-market
+git add .
+git commit -m "v4.3: feed and leaderboard as tabs"
+git push
+```
+
+4. Hard-refresh the live site.
+
+## Honest note on tab count
+
+You now have 7 tabs on the list view: Open, Pending, Settled, My bets, My markets, Feed, Leaderboard. On narrow mobile screens the tab row is horizontally scrollable — so it technically works, but it's getting close to cluttered. If you add more tabs later, consider consolidating (e.g., merging "My bets" and "My markets" into a single "Mine" tab).
 
 Iteration on v4.1. Adds three anti-bankruptcy mechanisms:
 
